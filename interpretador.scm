@@ -97,7 +97,8 @@
     (expression ("letrec" (arbno identifier "(" (separated-list identifier ",") ")" "=" expression) "in" expression) letrec-exp)
     (expression ("begin" expression (arbno ";" expression) "end") begin-exp)
     (expression ("set" identifier "=" expression) set-exp)
-    
+    (expression ("[" (separated-list expression ",") "]") list-exp)
+    (expression ("{" (separated-list identifier ":" expression ",") "}") dict-exp)
     ; Primitivas
     (primitive ("+") add-prim)
     (primitive ("-") substract-prim)
@@ -310,6 +311,9 @@
                   (apply-env-ref env id)
                   (eval-expression rhs-exp env))
                  1))
+
+       (list-exp (exps) (map (lambda (e) (eval-expression e env)) exps))
+      (dict-exp (keys exps) '())
       
       ;; NUEVO: Evaluación de definición de funciones
       ;; Devuelve la clausura empaquetada. Si se evalúa de forma aislada, produce el objeto procval.
@@ -348,17 +352,16 @@
                                  (let* ((cuerpo (if (null? body-exps) 
                                                     return-exp 
                                                     (begin-exp (car body-exps) (append (cdr body-exps) (list return-exp)))))
-                                        ;; 1. Creamos un vector temporal para la celda
-                                        (vec (make-vector 1))
-                                        ;; 2. Extendemos el ambiente con el nombre de la función apuntando a ese vector
-                                        (env-recursivo (extended-env-record (list id) vec current-env))
-                                        ;; 3. Creamos la clausura sobre el ambiente extendido (así se conoce a sí misma)
+                                        ;; 1. Crear un vector de una posición para albergar la futura clausura recursiva
+                                        (vec-res (make-vector 1))
+                                        ;; 2. Extendemos el ambiente vinculando el id de la función a este vector (todavía vacío)
+                                        (env-recursivo (extended-env-record (list id) vec-res current-env))
+                                        ;; 3. Creamos la clausura cerrándola sobre el ambiente recursivo
                                         (clausura (closure ids cuerpo env-recursivo)))
                                    (begin
-                                     ;; 4. Guardamos la clausura dentro del vector (cerramos el ciclo)
-                                     (vector-set! vec 0 (direct-target clausura))
+                                     ;; 4. Guardamos la clausura dentro del vector para cerrar el círculo referencial
+                                     (vector-set! vec-res 0 (direct-target clausura))
                                      (set! val clausura)
-                                     ;; 5. El nuevo ambiente para las siguientes líneas hereda este entorno recursivo
                                      (set! new-env env-recursivo))))
                        (else
                         (set! val (eval-expression current-exp current-env))))
