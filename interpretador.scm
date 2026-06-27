@@ -36,49 +36,64 @@
 ;Especificación Léxica
 
 (define scanner-spec-simple-interpreter
-'((white-sp
-   (whitespace) skip)
-  (comment
-   ("%" (arbno (not #\newline))) skip)
-  (identifier
-   (letter (arbno (or letter digit "?"))) symbol)
-  (number
-   (digit (arbno digit)) number)
-  (number
-   ("-" digit (arbno digit)) number)))
+  '((white-sp
+     (whitespace) skip)
+    
+    (comment
+     ("%" (arbno (not #\newline))) skip)
+    (comment
+     ("#" (arbno (not #\newline))) skip)
+    
+    (identifier
+     (letter (arbno (or letter digit "?" "$"))) symbol)
+    
+    ; numero enteros
+    (number
+     (digit (arbno digit)) number)
+    (number
+     ("-" digit (arbno digit)) number)
+    
+    ; numeros de punto flotante
+    (float
+     (digit (arbno digit) "." digit (arbno digit)) number)
+    (float
+     ("-" digit (arbno digit) "." digit (arbno digit)) number)
+    
+    ; cadena de texto
+    (string
+     ("\"" (arbno (not #\")) "\"") string)
+    ))
 
 ;Especificación Sintáctica (gramática)
 
 (define grammar-simple-interpreter
   '((program (expression) a-program)
+    
+    ; Literales existentes
     (expression (number) lit-exp)
     (expression (identifier) var-exp)
-    (expression
-     (primitive "(" (separated-list expression ",")")")
-     primapp-exp)
-    (expression ("if" expression "then" expression "else" expression)
-                if-exp)
-    (expression ("let" (arbno identifier "=" expression) "in" expression)
-                let-exp)
-    (expression ("proc" "(" (arbno identifier) ")" expression)
-                proc-exp)
-    (expression ( "(" expression (arbno expression) ")")
-                app-exp)
-    (expression ("letrec" (arbno identifier "(" (separated-list identifier ",") ")" "=" expression)  "in" expression) 
-                letrec-exp)
     
-    ; características adicionales
-    (expression ("begin" expression (arbno ";" expression) "end")
-                begin-exp)
-    (expression ("set" identifier "=" expression)
-                set-exp)
-    ;;;;;;
-
+    ; NUEVOS: Expresiones para los nuevos tokens léxicos
+    (expression (float) float-exp)
+    (expression (string) string-exp)
+    
+    ; ... (El resto de la gramática original se mantiene idéntica: primapp-exp, if-exp, let-exp, etc.) ...
+    (expression (primitive "(" (separated-list expression ",") ")") primapp-exp)
+    (expression ("if" expression "then" expression "else" expression) if-exp)
+    (expression ("let" (arbno identifier "=" expression) "in" expression) let-exp)
+    (expression ("proc" "(" (separated-list identifier ",") ")" expression) proc-exp)
+    (expression ("(" expression (arbno expression) ")") app-exp)
+    (expression ("letrec" (arbno identifier "(" (separated-list identifier ",") ")" "=" expression) "in" expression) letrec-exp)
+    (expression ("begin" expression (arbno ";" expression) "end") begin-exp)
+    (expression ("set" identifier "=" expression) set-exp)
+    
+    ; Primitivas
     (primitive ("+") add-prim)
     (primitive ("-") substract-prim)
     (primitive ("*") mult-prim)
     (primitive ("add1") incr-prim)
-    (primitive ("sub1") decr-prim)))
+    (primitive ("sub1") decr-prim)
+    ))
 
 
 ;Tipos de datos para la sintaxis abstracta de la gramática
@@ -216,6 +231,8 @@
   (lambda (exp env)
     (cases expression exp
       (lit-exp (datum) datum)
+      (float-exp (datum)datum)
+      (string-exp (datum)datum)
       (var-exp (id) (apply-env env id))
       (primapp-exp (prim rands)
                    (let ((args (eval-primapp-exp-rands rands env)))
@@ -386,7 +403,7 @@
 
 (define expval?
   (lambda (x)
-    (or (number? x) (procval? x))))
+    (or (number? x) (string? x) (procval? x))))
 
 (define ref-to-direct-target?
   (lambda (x)
