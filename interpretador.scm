@@ -84,6 +84,7 @@
 
     ; declaracion de variables
     (expression ("var" identifier "=" expression) var-decl-exp)
+    (expression ("const" identifier "=" expression) const-decl-exp)
     
     ; Expresiones existentes
     (expression (primitive "(" (separated-list expression ",") ")") primapp-exp)
@@ -231,6 +232,7 @@
 
 (define-datatype target target?
   (direct-target (expval expval?))
+  (constant-target (expval expval?))
   (indirect-target (ref ref-to-direct-target?)))
 
 (define-datatype reference reference?
@@ -261,8 +263,12 @@
       ;; evaluación de var-decl-exp 
       ;; en evaluación aislada, simplemente extiende el ambiente localmente y retorna 1 o el valor.
       (var-decl-exp (id rhs-exp)
-                    (let ((val (eval-expression rhs-exp env)))
+        (let ((val (eval-expression rhs-exp env)))
                       val))
+
+     (const-decl-exp (id rhs-exp)
+                      (let ((val (eval-expression rhs-exp env)))
+                        val))
 
       (primapp-exp (prim rands)
                    (let ((args (eval-primapp-exp-rands rands env)))
@@ -307,17 +313,20 @@
                    (let ((new-env current-env)
                          (val 'null-val))
                      
-                     ;; 1. Evaluar la expresión actual inspeccionando si es una declaración var
                      (cases expression current-exp
                        (var-decl-exp (id rhs-exp)
                                      (begin
                                        (set! val (eval-expression rhs-exp current-env))
-                                       ;; Extendemos dinámicamente el ambiente para las próximas expresiones de la secuencia
                                        (set! new-env (extend-env (list id) (list (direct-target val)) current-env))))
+                       
+                       ;; NUEVO: Captura de declaración de constantes en la secuencia
+                       (const-decl-exp (id rhs-exp)
+                                       (begin
+                                         (set! val (eval-expression rhs-exp current-env))
+                                         (set! new-env (extend-env (list id) (list (constant-target val)) current-env))))
                        (else
                         (set! val (eval-expression current-exp current-env))))
                      
-                     ;; 2. Continuar con el bucle secuencial
                      (if (null? remaining)
                          val
                          (loop (car remaining) (cdr remaining) new-env val))))))))
@@ -335,8 +344,14 @@
                (indirect-target
                 (let ((ref (apply-env-ref env id)))
                   (cases target (primitive-deref ref)
-                    (direct-target (expval) ref)
-                    (indirect-target (ref1) ref1)))))
+  (direct-target (expval)
+    ref)
+
+  (constant-target (expval)
+    ref)
+
+  (indirect-target (ref1)
+    ref1)))))
       (else
        (direct-target (eval-expression rand env))))))
 
@@ -467,15 +482,18 @@
            (a-ref (pos vec)
                   (cases target (vector-ref vec pos)
                     (direct-target (v) #t)
+                    (constant-target (v) #t)
                     (indirect-target (v) #f)))))))
 
 (define deref
   (lambda (ref)
     (cases target (primitive-deref ref)
       (direct-target (expval) expval)
+       (constant-target (expval) expval)
       (indirect-target (ref1)
                        (cases target (primitive-deref ref1)
                          (direct-target (expval) expval)
+                         (constant-target (expval) expval)
                          (indirect-target (p)
                                           (eopl:error 'deref
                                                       "Illegal reference: ~s" ref1)))))))
@@ -488,11 +506,16 @@
 
 (define setref!
   (lambda (ref expval)
-    (let
-        ((ref (cases target (primitive-deref ref)
-                (direct-target (expval1) ref)
-                (indirect-target (ref1) ref1))))
-      (primitive-setref! ref (direct-target expval)))))
+    (let ((target-actual (primitive-deref ref)))
+      (cases target target-actual
+        (constant-target (v)
+                         (eopl:error 'setref! "Error semantico: Intento de modificar la constante inmutable"))
+        (else
+         (let ((clean-ref (cases target target-actual
+                            (direct-target (expval1) ref)
+                            (indirect-target (ref1) ref1)
+                            (else ref))))
+           (primitive-setref! clean-ref (direct-target expval))))))))
 
 (define primitive-setref!
   (lambda (ref val)
@@ -524,3 +547,4 @@
                 (+ list-index-r 1)
                 #f))))))
 
+(interpretador)
