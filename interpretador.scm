@@ -76,6 +76,11 @@
     ; NUEVOS: Expresiones para los nuevos tokens léxicos
     (expression (float) float-exp)
     (expression (string) string-exp)
+
+    
+    (expression ("true") true-exp)
+    (expression ("false") false-exp)
+    (expression ("null") null-exp)
     
     ; ... (El resto de la gramática original se mantiene idéntica: primapp-exp, if-exp, let-exp, etc.) ...
     (expression (primitive "(" (separated-list expression ",") ")") primapp-exp)
@@ -231,21 +236,37 @@
   (lambda (exp env)
     (cases expression exp
       (lit-exp (datum) datum)
-      (float-exp (datum)datum)
-      (string-exp (datum)datum)
+      (float-exp (datum) datum)
+      (string-exp (datum) datum)
+
+      ;;fase 2
+      (true-exp ()
+        #t)
+
+      (false-exp ()
+        #f)
+
+      (null-exp ()
+        '())
+
       (var-exp (id) (apply-env env id))
+
       (primapp-exp (prim rands)
                    (let ((args (eval-primapp-exp-rands rands env)))
                      (apply-primitive prim args)))
+
       (if-exp (test-exp true-exp false-exp)
               (if (true-value? (eval-expression test-exp env))
                   (eval-expression true-exp env)
                   (eval-expression false-exp env)))
+
       (let-exp (ids rands body)
                (let ((args (eval-let-exp-rands rands env)))
                  (eval-expression body (extend-env ids args env))))
+
       (proc-exp (ids body)
                 (closure ids body env))
+
       (app-exp (rator rands)
                (let ((proc (eval-expression rator env))
                      (args (eval-rands rands env)))
@@ -253,23 +274,25 @@
                      (apply-procedure proc args)
                      (eopl:error 'eval-expression
                                  "Attempt to apply non-procedure ~s" proc))))
+
       (letrec-exp (proc-names idss bodies letrec-body)
                   (eval-expression letrec-body
                                    (extend-env-recursively proc-names idss bodies env)))
+
       (set-exp (id rhs-exp)
                (begin
                  (setref!
                   (apply-env-ref env id)
                   (eval-expression rhs-exp env))
                  1))
+
       (begin-exp (exp exps)
                  (let loop ((acc (eval-expression exp env))
-                             (exps exps))
-                    (if (null? exps) 
-                        acc
-                        (loop (eval-expression (car exps) 
-                                               env)
-                              (cdr exps))))))))
+                            (exps exps))
+                   (if (null? exps)
+                       acc
+                       (loop (eval-expression (car exps) env)
+                             (cdr exps))))))))
 
 ; funciones auxiliares para aplicar eval-expression a cada elemento de una 
 ; lista de operandos (expresiones)
