@@ -98,6 +98,10 @@
     (primitive ("*") mult-prim)
     (primitive ("add1") incr-prim)
     (primitive ("sub1") decr-prim)
+
+
+    ; NUEVO: Primitiva de impresión en pantalla para MathFlow
+    (primitive ("print") print-prim)
     ))
 
 
@@ -333,7 +337,13 @@
       (substract-prim () (- (car args) (cadr args)))
       (mult-prim () (* (car args) (cadr args)))
       (incr-prim () (+ (car args) 1))
-      (decr-prim () (- (car args) 1)))))
+      (decr-prim () (- (car args) 1))
+
+      (print-prim ()
+        (begin
+          (display (car args))
+          (newline)
+          (car args)))))
 
 ;true-value?: determina si un valor dado corresponde a un valor booleano falso o verdadero
 (define true-value?
