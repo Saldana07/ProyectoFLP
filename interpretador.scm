@@ -85,6 +85,8 @@
     ; declaracion de variables
     (expression ("var" identifier "=" expression) var-decl-exp)
     (expression ("const" identifier "=" expression) const-decl-exp)
+
+    (expression ("func" identifier "(" (separated-list identifier ",") ")" "{" (arbno expression ";") "return" expression "}") func-exp)
     
     ; Expresiones existentes - modificada con end
     (expression (primitive "(" (separated-list expression ",") ")") primapp-exp)
@@ -246,7 +248,10 @@
     (cases expression exp
       (lit-exp (datum) datum)
       (float-exp (datum) datum)
-      (string-exp (datum) datum)
+      (string-exp (datum) 
+                  (if (and (string? datum) (>= (string-length datum) 2))
+                      (substring datum 1 (- (string-length datum) 1))
+                      datum))
 
       ;;fase 2
       (true-exp ()
@@ -259,6 +264,7 @@
         '())
 
       (var-exp (id) (apply-env env id))
+      
 
       ;; evaluación de var-decl-exp 
       ;; en evaluación aislada, simplemente extiende el ambiente localmente y retorna 1 o el valor.
@@ -304,6 +310,19 @@
                   (apply-env-ref env id)
                   (eval-expression rhs-exp env))
                  1))
+      
+      ;; NUEVO: Evaluación de definición de funciones
+      ;; Devuelve la clausura empaquetada. Si se evalúa de forma aislada, produce el objeto procval.
+      (func-exp (id ids body-exps return-exp)
+                (let* ((cuerpo-completo (if (null? body-exps) 
+                                           return-exp 
+                                           (begin-exp (car body-exps) (append (cdr body-exps) (list return-exp)))))
+                       (vec (make-vector 1))
+                       (env-recursivo (extended-env-record (list id) vec env))
+                       (clausura (closure ids cuerpo-completo env-recursivo)))
+                  (begin
+                    (vector-set! vec 0 (direct-target clausura))
+                    clausura)))
 
       (begin-exp (exp exps)
                  (let loop ((current-exp exp)
@@ -319,11 +338,28 @@
                                        (set! val (eval-expression rhs-exp current-env))
                                        (set! new-env (extend-env (list id) (list (direct-target val)) current-env))))
                        
-                       ;; NUEVO: Captura de declaración de constantes en la secuencia
                        (const-decl-exp (id rhs-exp)
                                        (begin
                                          (set! val (eval-expression rhs-exp current-env))
                                          (set! new-env (extend-env (list id) (list (constant-target val)) current-env))))
+                       
+                      
+                       (func-exp (id ids body-exps return-exp)
+                                 (let* ((cuerpo (if (null? body-exps) 
+                                                    return-exp 
+                                                    (begin-exp (car body-exps) (append (cdr body-exps) (list return-exp)))))
+                                        ;; 1. Creamos un vector temporal para la celda
+                                        (vec (make-vector 1))
+                                        ;; 2. Extendemos el ambiente con el nombre de la función apuntando a ese vector
+                                        (env-recursivo (extended-env-record (list id) vec current-env))
+                                        ;; 3. Creamos la clausura sobre el ambiente extendido (así se conoce a sí misma)
+                                        (clausura (closure ids cuerpo env-recursivo)))
+                                   (begin
+                                     ;; 4. Guardamos la clausura dentro del vector (cerramos el ciclo)
+                                     (vector-set! vec 0 (direct-target clausura))
+                                     (set! val clausura)
+                                     ;; 5. El nuevo ambiente para las siguientes líneas hereda este entorno recursivo
+                                     (set! new-env env-recursivo))))
                        (else
                         (set! val (eval-expression current-exp current-env))))
                      
@@ -478,7 +514,11 @@
 
 (define expval?
   (lambda (x)
-    (or (number? x) (string? x) (procval? x))))
+    (or (number? x) 
+        (string? x) 
+        (procval? x)
+        (boolean? x)    
+        (null? x))))    
 
 (define ref-to-direct-target?
   (lambda (x)
