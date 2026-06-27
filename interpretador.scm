@@ -86,9 +86,9 @@
     (expression ("var" identifier "=" expression) var-decl-exp)
     (expression ("const" identifier "=" expression) const-decl-exp)
     
-    ; Expresiones existentes
+    ; Expresiones existentes - modificada con end
     (expression (primitive "(" (separated-list expression ",") ")") primapp-exp)
-    (expression ("if" expression "then" expression "else" expression) if-exp)
+    (expression ("if" expression "then" expression "else" expression "end") if-exp)
     (expression ("let" (arbno identifier "=" expression) "in" expression) let-exp)
     (expression ("proc" "(" (separated-list identifier ",") ")" expression) proc-exp)
     (expression ("(" expression (arbno expression) ")") app-exp)
@@ -382,10 +382,15 @@
 
       )))
 
-;true-value?: determina si un valor dado corresponde a un valor booleano falso o verdadero
+;true-value?: determina si un valor dado corresponde a un valor booleano falso o verdadero segun mathflow
 (define true-value?
   (lambda (x)
-    (not (zero? x))))
+    (not (cond
+           ((eqv? x #f) #t)
+           ((and (number? x) (zero? x)) #t)
+           ((and (string? x) (string=? x "")) #t)
+           ((null? x) #t)
+           (else #f)))))
 
 ;*******************************************************************************************
 ;Procedimientos
