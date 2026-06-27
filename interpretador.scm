@@ -73,7 +73,7 @@
     (expression (number) lit-exp)
     (expression (identifier) var-exp)
     
-    ; NUEVOS: Expresiones para los nuevos tokens léxicos
+    ; Expresiones para los nuevos tokens lexicos
     (expression (float) float-exp)
     (expression (string) string-exp)
 
@@ -81,8 +81,11 @@
     (expression ("true") true-exp)
     (expression ("false") false-exp)
     (expression ("null") null-exp)
+
+    ; declaracion de variables
+    (expression ("var" identifier "=" expression) var-decl-exp)
     
-    ; ... (El resto de la gramática original se mantiene idéntica: primapp-exp, if-exp, let-exp, etc.) ...
+    ; Expresiones existentes
     (expression (primitive "(" (separated-list expression ",") ")") primapp-exp)
     (expression ("if" expression "then" expression "else" expression) if-exp)
     (expression ("let" (arbno identifier "=" expression) "in" expression) let-exp)
@@ -100,7 +103,7 @@
     (primitive ("sub1") decr-prim)
 
 
-    ; NUEVO: Primitiva de impresión en pantalla para MathFlow
+    ; impresion en pantalla
     (primitive ("print") print-prim)
     ))
 
@@ -255,6 +258,12 @@
 
       (var-exp (id) (apply-env env id))
 
+      ;; evaluación de var-decl-exp 
+      ;; en evaluación aislada, simplemente extiende el ambiente localmente y retorna 1 o el valor.
+      (var-decl-exp (id rhs-exp)
+                    (let ((val (eval-expression rhs-exp env)))
+                      val))
+
       (primapp-exp (prim rands)
                    (let ((args (eval-primapp-exp-rands rands env)))
                      (apply-primitive prim args)))
@@ -291,12 +300,27 @@
                  1))
 
       (begin-exp (exp exps)
-                 (let loop ((acc (eval-expression exp env))
-                            (exps exps))
-                   (if (null? exps)
-                       acc
-                       (loop (eval-expression (car exps) env)
-                             (cdr exps))))))))
+                 (let loop ((current-exp exp)
+                            (remaining exps)
+                            (current-env env)
+                            (last-val 'null-val))
+                   (let ((new-env current-env)
+                         (val 'null-val))
+                     
+                     ;; 1. Evaluar la expresión actual inspeccionando si es una declaración var
+                     (cases expression current-exp
+                       (var-decl-exp (id rhs-exp)
+                                     (begin
+                                       (set! val (eval-expression rhs-exp current-env))
+                                       ;; Extendemos dinámicamente el ambiente para las próximas expresiones de la secuencia
+                                       (set! new-env (extend-env (list id) (list (direct-target val)) current-env))))
+                       (else
+                        (set! val (eval-expression current-exp current-env))))
+                     
+                     ;; 2. Continuar con el bucle secuencial
+                     (if (null? remaining)
+                         val
+                         (loop (car remaining) (cdr remaining) new-env val))))))))
 
 ; funciones auxiliares para aplicar eval-expression a cada elemento de una 
 ; lista de operandos (expresiones)
@@ -339,11 +363,9 @@
       (incr-prim () (+ (car args) 1))
       (decr-prim () (- (car args) 1))
 
-      (print-prim ()
-        (begin
-          (display (car args))
-          (newline)
-          (car args)))))
+      (print-prim () (begin (display (car args)) (newline) 'null-val))
+
+      )))
 
 ;true-value?: determina si un valor dado corresponde a un valor booleano falso o verdadero
 (define true-value?
